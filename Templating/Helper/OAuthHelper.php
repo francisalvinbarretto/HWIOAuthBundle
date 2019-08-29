@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,15 +11,11 @@
 
 namespace HWI\Bundle\OAuthBundle\Templating\Helper;
 
-use Symfony\Component\DependencyInjection\ContainerInterface,
-    Symfony\Component\HttpFoundation\Request,
-    Symfony\Component\Templating\Helper\Helper;
-
 use HWI\Bundle\OAuthBundle\Security\OAuthUtils;
+use Symfony\Component\HttpFoundation\RequestStack;
+use Symfony\Component\Templating\Helper\Helper;
 
 /**
- * OAuthHelper
- *
  * @author Alexander <iam.asm89@gmail.com>
  * @author Joseph Bielawski <stloyd@gmail.com>
  */
@@ -31,11 +27,18 @@ class OAuthHelper extends Helper
     private $oauthUtils;
 
     /**
-     * @param OAuthUtils $oauthUtils
+     * @var RequestStack
      */
-    public function __construct(OAuthUtils $oauthUtils)
+    private $requestStack;
+
+    /**
+     * @param OAuthUtils   $oauthUtils
+     * @param RequestStack $requestStack
+     */
+    public function __construct(OAuthUtils $oauthUtils, RequestStack $requestStack)
     {
         $this->oauthUtils = $oauthUtils;
+        $this->requestStack = $requestStack;
     }
 
     /**
@@ -47,7 +50,7 @@ class OAuthHelper extends Helper
     }
 
     /**
-     * @param string  $name
+     * @param string $name
      *
      * @return string
      *
@@ -55,7 +58,7 @@ class OAuthHelper extends Helper
      */
     public function getLoginUrl($name)
     {
-        return $this->oauthUtils->getLoginUrl($name);
+        return $this->oauthUtils->getLoginUrl($this->requestStack->getMasterRequest(), $name);
     }
 
     /**
@@ -65,9 +68,9 @@ class OAuthHelper extends Helper
      *
      * @return string
      */
-    public function getAuthorizationUrl($name, $redirectUrl = null, array $extraParameters = array())
+    public function getAuthorizationUrl($name, $redirectUrl = null, array $extraParameters = [])
     {
-        return $this->oauthUtils->getAuthorizationUrl($name, $redirectUrl, $extraParameters);
+        return $this->oauthUtils->getAuthorizationUrl($this->requestStack->getMasterRequest(), $name, $redirectUrl, $extraParameters);
     }
 
     /**

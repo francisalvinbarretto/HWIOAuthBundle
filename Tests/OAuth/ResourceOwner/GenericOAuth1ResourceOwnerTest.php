@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,104 +11,111 @@
 
 namespace HWI\Bundle\OAuthBundle\Tests\OAuth\ResourceOwner;
 
+use Http\Client\Common\HttpMethodsClient;
+use HWI\Bundle\OAuthBundle\OAuth\RequestDataStorageInterface;
 use HWI\Bundle\OAuthBundle\OAuth\ResourceOwner\GenericOAuth1ResourceOwner;
+use HWI\Bundle\OAuthBundle\Tests\Fixtures\CustomUserResponse;
 use Symfony\Component\HttpFoundation\Request;
 
-class GenericOAuth1ResourceOwnerTest extends \PHPUnit_Framework_TestCase
+class GenericOAuth1ResourceOwnerTest extends ResourceOwnerTestCase
 {
-    /**
-     * @var GenericOAuth1ResourceOwner
-     */
+    protected $resourceOwnerClass = GenericOAuth1ResourceOwner::class;
+    /** @var GenericOAuth1ResourceOwner */
     protected $resourceOwner;
-    protected $buzzClient;
-    protected $buzzResponse;
-    protected $buzzResponseContentType;
+    protected $resourceOwnerName;
+    /** @var \PHPUnit_Framework_MockObject_MockObject|HttpMethodsClient */
+    protected $httpClient;
+    protected $httpResponse;
+    protected $httpResponseContentType;
+    /** @var \PHPUnit_Framework_MockObject_MockObject|RequestDataStorageInterface */
     protected $storage;
 
+    protected $options = [
+        'client_id' => 'clientid',
+        'client_secret' => 'clientsecret',
+
+        'infos_url' => 'http://user.info/?test=1',
+        'request_token_url' => 'http://user.request/?test=2',
+        'authorization_url' => 'http://user.auth/?test=3',
+        'access_token_url' => 'http://user.access/?test=4',
+    ];
+
     protected $userResponse = '{"id": "1", "foo": "bar"}';
-    protected $options = array(
-        'client_id'           => 'clientid',
-        'client_secret'       => 'clientsecret',
 
-        'infos_url'           => 'http://user.info/',
-        'request_token_url'   => 'http://user.request/',
-        'authorization_url'   => 'http://user.auth/',
-        'access_token_url'    => 'http://user.access/',
-
-        'user_response_class' => '\HWI\Bundle\OAuthBundle\OAuth\Response\PathUserResponse',
-
-        'signature_method'    => 'HMAC-SHA1',
-
-        'realm'               => null,
-        'scope'               => null,
-    );
-
-    protected $paths = array(
+    protected $paths = [
         'identifier' => 'id',
-        'nickname'   => 'foo',
-        'realname'   => 'foo_disp',
-    );
+        'nickname' => 'foo',
+        'realname' => 'foo_disp',
+    ];
 
-    public function setUp()
+    protected function setUp()
     {
-        $this->resourceOwner = $this->createResourceOwner('oauth1');
+        $this->resourceOwnerName = str_replace(['generic', 'resourceownertest'], '', strtolower(__CLASS__));
+        $this->resourceOwner = $this->createResourceOwner($this->resourceOwnerName);
     }
 
-    public function testGetOption()
+    public function testUndefinedOptionThrowsException()
     {
-        $this->assertEquals($this->options['infos_url'], $this->resourceOwner->getOption('infos_url'));
-        $this->assertEquals($this->options['request_token_url'], $this->resourceOwner->getOption('request_token_url'));
-        $this->assertEquals($this->options['authorization_url'], $this->resourceOwner->getOption('authorization_url'));
-        $this->assertEquals($this->options['access_token_url'], $this->resourceOwner->getOption('access_token_url'));
+        $this->expectException(\Symfony\Component\OptionsResolver\Exception\ExceptionInterface::class);
 
-        $this->assertEquals($this->options['user_response_class'], $this->resourceOwner->getOption('user_response_class'));
-
-        $this->assertEquals($this->options['signature_method'], $this->resourceOwner->getOption('signature_method'));
-
-        $this->assertEquals($this->options['realm'], $this->resourceOwner->getOption('realm'));
-        $this->assertEquals($this->options['scope'], $this->resourceOwner->getOption('scope'));
+        $this->createResourceOwner($this->resourceOwnerName, ['non_existing' => null]);
     }
 
-    /**
-     * @expectedException \InvalidArgumentException
-     */
-    public function testGetInvalidOptionThrowsException()
+    public function testInvalidOptionValueThrowsException()
     {
-        $this->resourceOwner->getOption('non_existing');
+        $this->expectException(\Symfony\Component\OptionsResolver\Exception\ExceptionInterface::class);
+
+        $this->createResourceOwner($this->resourceOwnerName, ['csrf' => 'invalid']);
+    }
+
+    public function testHandleRequest()
+    {
+        $request = new Request(['test' => 'test']);
+
+        $this->assertFalse($this->resourceOwner->handles($request));
+
+        $request = new Request(['oauth_token' => 'test']);
+
+        $this->assertTrue($this->resourceOwner->handles($request));
+
+        $request = new Request(['oauth_token' => 'test', 'test' => 'test']);
+
+        $this->assertTrue($this->resourceOwner->handles($request));
     }
 
     public function testGetUserInformation()
     {
-        $this->mockBuzz($this->userResponse, 'application/json; charset=utf-8');
+        $this->mockHttpClient($this->userResponse, 'application/json; charset=utf-8');
 
-        $accessToken  = array('oauth_token' => 'token', 'oauth_token_secret' => 'secret');
+        $accessToken = ['oauth_token' => 'token', 'oauth_token_secret' => 'secret'];
         $userResponse = $this->resourceOwner->getUserInformation($accessToken);
 
         $this->assertEquals('1', $userResponse->getUsername());
         $this->assertEquals('bar', $userResponse->getNickname());
-        $this->assertEquals($accessToken, $userResponse->getAccessToken());
+        $this->assertEquals($accessToken['oauth_token'], $userResponse->getAccessToken());
+        $this->assertNull($userResponse->getRefreshToken());
+        $this->assertNull($userResponse->getExpiresIn());
     }
 
     public function testGetAuthorizationUrlContainOAuthTokenAndSecret()
     {
-        $this->mockBuzz('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json; charset=utf-8');
+        $this->mockHttpClient('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json; charset=utf-8');
 
         $this->storage->expects($this->once())
             ->method('save')
-            ->with($this->resourceOwner, array('oauth_token' => 'token', 'oauth_token_secret' => 'secret', 'timestamp' => time()));
+            ->with($this->resourceOwner, ['oauth_token' => 'token', 'oauth_token_secret' => 'secret', 'timestamp' => time()]);
 
         $this->assertEquals(
-            $this->options['authorization_url'].'?oauth_token=token',
+            $this->options['authorization_url'].'&oauth_token=token',
             $this->resourceOwner->getAuthorizationUrl('http://redirect.to/')
         );
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\AuthenticationException
-     */
     public function testGetAuthorizationUrlFailedResponseContainOnlyOAuthToken()
     {
-        $this->mockBuzz('{"oauth_token": "token"}', 'application/json; charset=utf-8');
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('{"oauth_token": "token"}', 'application/json; charset=utf-8');
 
         $this->storage->expects($this->never())
             ->method('save');
@@ -116,12 +123,11 @@ class GenericOAuth1ResourceOwnerTest extends \PHPUnit_Framework_TestCase
         $this->resourceOwner->getAuthorizationUrl('http://redirect.to/');
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\AuthenticationException
-     */
     public function testGetAuthorizationUrlFailedResponseContainOAuthProblem()
     {
-        $this->mockBuzz('oauth_problem=message');
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('oauth_problem=message');
 
         $this->storage->expects($this->never())
             ->method('save');
@@ -129,12 +135,23 @@ class GenericOAuth1ResourceOwnerTest extends \PHPUnit_Framework_TestCase
         $this->resourceOwner->getAuthorizationUrl('http://redirect.to/');
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\AuthenticationException
-     */
+    public function testGetAuthorizationUrlFailedResponseContainCallbackNotConfirmed()
+    {
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('oauth_callback_confirmed=false');
+
+        $this->storage->expects($this->never())
+            ->method('save');
+
+        $this->resourceOwner->getAuthorizationUrl('http://redirect.to/');
+    }
+
     public function testGetAuthorizationUrlFailedResponseNotContainOAuthTokenOrSecret()
     {
-        $this->mockBuzz('invalid');
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('invalid');
 
         $this->storage->expects($this->never())
             ->method('save');
@@ -144,143 +161,164 @@ class GenericOAuth1ResourceOwnerTest extends \PHPUnit_Framework_TestCase
 
     public function testGetAccessToken()
     {
-        $this->mockBuzz('oauth_token=token&oauth_token_secret=secret');
+        $this->mockHttpClient('oauth_token=token&oauth_token_secret=secret');
 
-        $request = new Request(array('oauth_verifier' => 'code', 'oauth_token' => 'token'));
+        $request = new Request(['oauth_verifier' => 'code', 'oauth_token' => 'token']);
 
         $this->storage->expects($this->once())
             ->method('fetch')
             ->with($this->resourceOwner, 'token')
-            ->will($this->returnValue(array('oauth_token' => 'token2', 'oauth_token_secret' => 'secret2')));
+            ->willReturn(['oauth_token' => 'token2', 'oauth_token_secret' => 'secret2']);
 
         $this->assertEquals(
-            array('oauth_token' => 'token', 'oauth_token_secret' => 'secret'),
+            ['oauth_token' => 'token', 'oauth_token_secret' => 'secret'],
             $this->resourceOwner->getAccessToken($request, 'http://redirect.to/')
         );
     }
 
     public function testGetAccessTokenJsonResponse()
     {
-        $this->mockBuzz('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json');
+        $this->mockHttpClient('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json');
 
-        $request = new Request(array('oauth_verifier' => 'code', 'oauth_token' => 'token'));
+        $request = new Request(['oauth_verifier' => 'code', 'oauth_token' => 'token']);
 
         $this->storage->expects($this->once())
             ->method('fetch')
             ->with($this->resourceOwner, 'token')
-            ->will($this->returnValue(array('oauth_token' => 'token2', 'oauth_token_secret' => 'secret2')));
+            ->willReturn(['oauth_token' => 'token2', 'oauth_token_secret' => 'secret2']);
 
         $this->assertEquals(
-            array('oauth_token' => 'token', 'oauth_token_secret' => 'secret'),
+            ['oauth_token' => 'token', 'oauth_token_secret' => 'secret'],
             $this->resourceOwner->getAccessToken($request, 'http://redirect.to/')
         );
     }
 
     public function testGetAccessTokenJsonCharsetResponse()
     {
-        $this->mockBuzz('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json; charset=utf-8');
+        $this->mockHttpClient('{"oauth_token": "token", "oauth_token_secret": "secret"}', 'application/json; charset=utf-8');
 
-        $request = new Request(array('oauth_verifier' => 'code', 'oauth_token' => 'token'));
+        $request = new Request(['oauth_verifier' => 'code', 'oauth_token' => 'token']);
 
         $this->storage->expects($this->once())
             ->method('fetch')
             ->with($this->resourceOwner, 'token')
-            ->will($this->returnValue(array('oauth_token' => 'token2', 'oauth_token_secret' => 'secret2')));
+            ->willReturn(['oauth_token' => 'token2', 'oauth_token_secret' => 'secret2']);
 
         $this->assertEquals(
-            array('oauth_token' => 'token', 'oauth_token_secret' => 'secret'),
+            ['oauth_token' => 'token', 'oauth_token_secret' => 'secret'],
             $this->resourceOwner->getAccessToken($request, 'http://redirect.to/')
         );
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\AuthenticationException
-     */
     public function testGetAccessTokenFailedResponse()
     {
-        $this->mockBuzz('invalid');
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('invalid');
 
         $this->storage->expects($this->once())
             ->method('fetch')
-            ->will($this->returnValue(array('oauth_token' => 'token', 'oauth_token_secret' => 'secret')));
+            ->willReturn(['oauth_token' => 'token', 'oauth_token_secret' => 'secret']);
 
-        $request = new Request(array('oauth_token' => 'token', 'oauth_verifier' => 'code'));
+        $this->storage->expects($this->never())
+            ->method('save');
+
+        $request = new Request(['oauth_token' => 'token', 'oauth_verifier' => 'code']);
 
         $this->resourceOwner->getAccessToken($request, 'http://redirect.to/');
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\AuthenticationException
-     */
     public function testGetAccessTokenErrorResponse()
     {
-        $this->mockBuzz('error=foo');
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->mockHttpClient('error=foo');
 
         $this->storage->expects($this->once())
             ->method('fetch')
-            ->will($this->returnValue(array('oauth_token' => 'token', 'oauth_token_secret' => 'secret')));
+            ->willReturn(['oauth_token' => 'token', 'oauth_token_secret' => 'secret']);
 
-        $request = new Request(array('oauth_token' => 'token', 'oauth_verifier' => 'code'));
+        $this->storage->expects($this->never())
+            ->method('save');
+
+        $request = new Request(['oauth_token' => 'token', 'oauth_verifier' => 'code']);
 
         $this->resourceOwner->getAccessToken($request, 'http://redirect.to/');
+    }
+
+    public function testGetAccessTokenInvalidArgumentException()
+    {
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->storage->expects($this->once())
+            ->method('fetch')
+            ->will($this->throwException(new \InvalidArgumentException()));
+
+        $this->httpClient->expects($this->never())
+            ->method('sendRequest');
+
+        $this->storage->expects($this->never())
+            ->method('save');
+
+        $request = new Request(['oauth_token' => 'token', 'oauth_verifier' => 'code']);
+
+        $this->resourceOwner->getAccessToken($request, 'http://redirect.to/');
+    }
+
+    public function testRefreshAccessToken()
+    {
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->resourceOwner->refreshAccessToken('token');
+    }
+
+    public function testRevokeToken()
+    {
+        $this->expectException(\Symfony\Component\Security\Core\Exception\AuthenticationException::class);
+
+        $this->resourceOwner->revokeToken('token');
+    }
+
+    public function testCsrfTokenIsAlwaysValidForOAuth1()
+    {
+        $this->storage->expects($this->never())
+            ->method('fetch');
+
+        $this->assertTrue($this->resourceOwner->isCsrfTokenValid('valid_token'));
+    }
+
+    public function testCsrfTokenValid()
+    {
+        $resourceOwner = $this->createResourceOwner($this->resourceOwnerName, ['csrf' => true]);
+
+        $this->storage->expects($this->never())
+            ->method('fetch');
+
+        $this->assertTrue($resourceOwner->isCsrfTokenValid('valid_token'));
     }
 
     public function testGetSetName()
     {
-        $this->assertEquals('oauth1', $this->resourceOwner->getName());
+        $this->assertEquals($this->resourceOwnerName, $this->resourceOwner->getName());
         $this->resourceOwner->setName('foo');
         $this->assertEquals('foo', $this->resourceOwner->getName());
     }
 
     public function testCustomResponseClass()
     {
-        $class         = '\HWI\Bundle\OAuthBundle\Tests\Fixtures\CustomUserResponse';
-        $resourceOwner = $this->createResourceOwner('oauth1', array('user_response_class' => $class));
+        $class = CustomUserResponse::class;
+        $resourceOwner = $this->createResourceOwner($this->resourceOwnerName, ['user_response_class' => $class]);
 
-        $this->mockBuzz();
+        $this->mockHttpClient();
 
-        /**
-         * @var $userResponse \HWI\Bundle\OAuthBundle\Tests\Fixtures\CustomUserResponse
-         */
-        $userResponse = $resourceOwner->getUserInformation(array('oauth_token' => 'token', 'oauth_token_secret' => 'secret'));
+        /** @var $userResponse CustomUserResponse */
+        $userResponse = $resourceOwner->getUserInformation(['oauth_token' => 'token', 'oauth_token_secret' => 'secret']);
 
         $this->assertInstanceOf($class, $userResponse);
         $this->assertEquals('foo666', $userResponse->getUsername());
         $this->assertEquals('foo', $userResponse->getNickname());
-    }
-
-    public function buzzSendMock($request, $response)
-    {
-        $response->setContent($this->buzzResponse);
-        $response->addHeader('Content-Type: ' . $this->buzzResponseContentType);
-    }
-
-    protected function mockBuzz($response = '', $contentType = 'text/plain')
-    {
-        $this->buzzClient->expects($this->once())
-            ->method('send')
-            ->will($this->returnCallback(array($this, 'buzzSendMock')));
-        $this->buzzResponse = $response;
-        $this->buzzResponseContentType = $contentType;
-    }
-
-    protected function createResourceOwner($name, array $options = array(), array $paths = array())
-    {
-        $this->buzzClient = $this->getMockBuilder('\Buzz\Client\ClientInterface')
-            ->disableOriginalConstructor()->getMock();
-        $httpUtils = $this->getMockBuilder('\Symfony\Component\Security\Http\HttpUtils')
-            ->disableOriginalConstructor()->getMock();
-
-        $this->storage = $this->getMock('\HWI\Bundle\OAuthBundle\OAuth\OAuth1RequestTokenStorageInterface');
-
-        $resourceOwner = $this->setUpResourceOwner($name, $httpUtils, array_merge($this->options, $options));
-        $resourceOwner->addPaths(array_merge($this->paths, $paths));
-
-        return $resourceOwner;
-    }
-
-    protected function setUpResourceOwner($name, $httpUtils, array $options)
-    {
-        return new GenericOAuth1ResourceOwner($this->buzzClient, $httpUtils, $options, $name, $this->storage);
+        $this->assertEquals('token', $userResponse->getAccessToken());
+        $this->assertNull($userResponse->getRefreshToken());
+        $this->assertNull($userResponse->getExpiresIn());
     }
 }

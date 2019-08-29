@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,30 +11,66 @@
 
 namespace HWI\Bundle\OAuthBundle\OAuth\ResourceOwner;
 
+use HWI\Bundle\OAuthBundle\Security\Core\Authentication\Token\OAuthToken;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+
 /**
- * StackExchangeResourceOwner
+ * StackExchangeResourceOwner.
  *
  * @author Joseph Bielawski <stloyd@gmail.com>
  */
 class StackExchangeResourceOwner extends GenericOAuth2ResourceOwner
 {
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    protected $options = array(
-        'authorization_url'   => 'https://stackexchange.com/oauth',
-        'access_token_url'    => 'https://stackexchange.com/oauth/access_token',
-        'infos_url'           => 'https://api.stackexchange.com/2.0/me',
-        'scope'               => 'no_expiry',
-        'user_response_class' => '\HWI\Bundle\OAuthBundle\OAuth\Response\PathUserResponse',
-    );
+    protected $paths = [
+        'identifier' => 'items.0.user_id',
+        'nickname' => 'items.0.display_name',
+        'realname' => 'items.0.display_name',
+        'profilepicture' => 'items.0.profile_image',
+    ];
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    protected $paths = array(
-        'identifier'  => 'user_id',
-        'nickname'    => 'display_name',
-        'realname'    => 'display_name'
-    );
+    public function getUserInformation(array $accessToken, array $extraParameters = [])
+    {
+        $parameters = array_merge(
+           [$this->options['attr_name'] => $accessToken['access_token']],
+           ['site' => $this->options['site'], 'key' => $this->options['key']],
+           $extraParameters
+        );
+
+        $content = $this->doGetUserInformationRequest($this->normalizeUrl($this->options['infos_url'], $parameters));
+
+        $response = $this->getUserResponse();
+        $response->setData((string) $content->getBody());
+        $response->setResourceOwner($this);
+        $response->setOAuthToken(new OAuthToken($accessToken));
+
+        return $response;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function configureOptions(OptionsResolver $resolver)
+    {
+        parent::configureOptions($resolver);
+
+        $resolver->setRequired([
+            'key',
+        ]);
+
+        $resolver->setDefaults([
+            'authorization_url' => 'https://stackexchange.com/oauth',
+            'access_token_url' => 'https://stackexchange.com/oauth/access_token',
+            'infos_url' => 'https://api.stackexchange.com/2.0/me',
+
+            'scope' => 'no_expiry',
+            'site' => 'stackoverflow',
+            'use_bearer_authorization' => false,
+        ]);
+    }
 }

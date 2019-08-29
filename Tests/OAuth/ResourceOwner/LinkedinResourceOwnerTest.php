@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -13,28 +13,75 @@ namespace HWI\Bundle\OAuthBundle\Tests\OAuth\ResourceOwner;
 
 use HWI\Bundle\OAuthBundle\OAuth\ResourceOwner\LinkedinResourceOwner;
 
-class LinkedinResourceOwnerTest extends GenericOAuth1ResourceOwnerTest
+class LinkedinResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 {
-    protected $userResponse = '{"id": "1", "formattedName": "bar"}';
-    protected $paths        = array(
+    protected $resourceOwnerClass = LinkedinResourceOwner::class;
+    protected $userResponse = <<<json
+{
+    "id": "1",
+    "firstName": {
+      "localized": {
+        "en_US": "John"
+      },
+      "preferredLocale": {
+        "country": "US",
+        "language": "en"
+      }
+    },
+    "lastName": {
+      "localized": {
+        "en_US": "Smith"
+      },
+      "preferredLocale": {
+        "country": "US",
+        "language": "en"
+      }
+    },
+    "emailAddress": "example@website.com"
+}
+json;
+    protected $paths = [
         'identifier' => 'id',
-        'nickname'   => 'formattedName',
-        'realname'   => 'formattedName',
-    );
+        'nickname' => 'emailAddress',
+        'firstname' => 'firstName',
+        'lastname' => 'lastName',
+        'email' => 'emailAddress',
+        'profilepicture' => 'profilePicture',
+    ];
+    protected $csrf = true;
 
-    protected function setUpResourceOwner($name, $httpUtils, array $options)
+    protected $expectedUrls = [
+        'authorization_url' => 'http://user.auth/?test=2&response_type=code&client_id=clientid&scope=r_liteprofile+r_emailaddress&state=random&redirect_uri=http%3A%2F%2Fredirect.to%2F',
+    ];
+
+    protected $httpClientCalls = 1;
+
+    public function testCustomResponseClass()
     {
-        $options = array_merge(
-            array(
-                'authorization_url'   => 'https://www.linkedin.com/uas/oauth/authenticate',
-                'request_token_url'   => 'https://api.linkedin.com/uas/oauth/requestToken',
-                'access_token_url'    => 'https://api.linkedin.com/uas/oauth/accessToken',
-                'infos_url'           => 'http://api.linkedin.com/v1/people/~:(id,formatted-name)',
-                'realm'               => 'http://api.linkedin.com'
-            ),
-            $options
-        );
+        $this->httpClientCalls = 2;
 
-        return new LinkedinResourceOwner($this->buzzClient, $httpUtils, $options, $name, $this->storage);
+        parent::testCustomResponseClass();
+
+        $this->httpClientCalls = 1;
+    }
+
+    public function testGetUserInformation()
+    {
+        $this->httpClientCalls = 2;
+
+        $this->mockHttpClient($this->userResponse, 'application/json; charset=utf-8');
+
+        /** @var $userResponse \HWI\Bundle\OAuthBundle\OAuth\Response\AbstractUserResponse */
+        $userResponse = $this->resourceOwner->getUserInformation($this->tokenData);
+
+        $this->assertEquals('1', $userResponse->getUsername());
+        $this->assertEquals('example@website.com', $userResponse->getNickname());
+        $this->assertEquals('John', $userResponse->getFirstName());
+        $this->assertEquals('Smith', $userResponse->getLastName());
+        $this->assertEquals('token', $userResponse->getAccessToken());
+        $this->assertNull($userResponse->getRefreshToken());
+        $this->assertNull($userResponse->getExpiresIn());
+
+        $this->httpClientCalls = 1;
     }
 }

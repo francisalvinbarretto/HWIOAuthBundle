@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,18 +11,20 @@
 
 namespace HWI\Bundle\OAuthBundle\Tests\Security\Core\User;
 
-use HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUser,
-    HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUserProvider,
-    Symfony\Component\Security\Core\User\User;
+use HWI\Bundle\OAuthBundle\OAuth\Response\UserResponseInterface;
+use HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUser;
+use HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUserProvider;
+use PHPUnit\Framework\TestCase;
+use Symfony\Component\Security\Core\User\User;
 
-class OAuthUserProviderTest extends \PHPUnit_Framework_TestCase
+class OAuthUserProviderTest extends TestCase
 {
     /**
      * @var OAuthUserProvider
      */
-    protected $provider;
+    private $provider;
 
-    public function setUp()
+    protected function setUp()
     {
         $this->provider = new OAuthUserProvider();
     }
@@ -30,7 +32,7 @@ class OAuthUserProviderTest extends \PHPUnit_Framework_TestCase
     public function testLoadUserByUsername()
     {
         $user = $this->provider->loadUserByUsername('asm89');
-        $this->assertInstanceOf('\HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUser', $user);
+        $this->assertInstanceOf(OAuthUser::class, $user);
         $this->assertEquals('asm89', $user->getUsername());
     }
 
@@ -42,12 +44,11 @@ class OAuthUserProviderTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals($user, $freshUser);
     }
 
-    /**
-     * @expectedException \Symfony\Component\Security\Core\Exception\UnsupportedUserException
-     * @expectedExceptionMessage Unsupported user class "Symfony\Component\Security\Core\User\User"
-     */
     public function testRefreshUserUnsupportedClass()
     {
+        $this->expectException(\Symfony\Component\Security\Core\Exception\UnsupportedUserException::class);
+        $this->expectExceptionMessage('Unsupported user class "Symfony\\Component\\Security\\Core\\User\\User"');
+
         $user = new User('asm89', 'foo');
 
         $this->provider->refreshUser($user);
@@ -55,7 +56,7 @@ class OAuthUserProviderTest extends \PHPUnit_Framework_TestCase
 
     public function testSupportsClass()
     {
-        $class = get_class(new OAuthUser('asm89'));
+        $class = \get_class(new OAuthUser('asm89'));
 
         $this->assertTrue($this->provider->supportsClass($class));
         $this->assertFalse($this->provider->supportsClass('\Some\Other\Class'));
@@ -63,17 +64,16 @@ class OAuthUserProviderTest extends \PHPUnit_Framework_TestCase
 
     public function testLoadUserByOAuthUserResponse()
     {
-        $responseMock = $this->getMockBuilder('HWI\Bundle\OAuthBundle\OAuth\Response\UserResponseInterface')
-            ->getMock();
+        $responseMock = $this->createMock(UserResponseInterface::class);
 
         $responseMock
             ->expects($this->once())
             ->method('getNickname')
-            ->will($this->returnValue('asm89'))
+            ->willReturn('asm89')
         ;
 
         $user = $this->provider->loadUserByOAuthUserResponse($responseMock);
-        $this->assertInstanceOf('\HWI\Bundle\OAuthBundle\Security\Core\User\OAuthUser', $user);
+        $this->assertInstanceOf(OAuthUser::class, $user);
         $this->assertEquals('asm89', $user->getUsername());
     }
 }

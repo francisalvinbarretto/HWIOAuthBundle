@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -15,6 +15,7 @@ use HWI\Bundle\OAuthBundle\OAuth\ResourceOwner\VkontakteResourceOwner;
 
 class VkontakteResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 {
+    protected $resourceOwnerClass = VkontakteResourceOwner::class;
     protected $userResponse = <<<json
 {
     "response": {
@@ -24,23 +25,14 @@ class VkontakteResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 }
 json;
 
-    protected $paths = array(
+    protected $paths = [
         'identifier' => 'response.user_id',
-        'nickname'   => 'response.user_name',
-        'realname'   => 'response.user_name',
-    );
+        'nickname' => 'response.user_name',
+        'realname' => 'response.user_name',
+    ];
 
-    protected function setUpResourceOwner($name, $httpUtils, array $options)
-    {
-        $options = array_merge(
-            array(
-                 'authorization_url'   => 'https://api.vk.com/oauth/authorize',
-                 'access_token_url'    => 'https://oauth.vk.com/access_token',
-                 'infos_url'           => 'https://api.vk.com/method/getUserInfoEx',
-            ),
-            $options
-        );
-
-        return new VkontakteResourceOwner($this->buzzClient, $httpUtils, $options, $name);
-    }
+    protected $expectedUrls = [
+        'authorization_url' => 'http://user.auth/?test=2&response_type=code&client_id=clientid&scope=email&redirect_uri=http%3A%2F%2Fredirect.to%2F',
+        'authorization_url_csrf' => 'http://user.auth/?test=2&response_type=code&client_id=clientid&scope=email&state=random&redirect_uri=http%3A%2F%2Fredirect.to%2F',
+    ];
 }

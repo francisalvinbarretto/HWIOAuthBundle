@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -15,6 +15,7 @@ use HWI\Bundle\OAuthBundle\OAuth\ResourceOwner\WindowsLiveResourceOwner;
 
 class WindowsLiveResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 {
+    protected $resourceOwnerClass = WindowsLiveResourceOwner::class;
     protected $userResponse = <<<json
 {
     "id": "1",
@@ -22,23 +23,14 @@ class WindowsLiveResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 }
 json;
 
-    protected $paths = array(
+    protected $paths = [
         'identifier' => 'id',
-        'nickname'   => 'name',
-        'realname'   => 'name',
-    );
+        'nickname' => 'name',
+        'realname' => 'name',
+    ];
 
-    protected function setUpResourceOwner($name, $httpUtils, array $options)
-    {
-        $options = array_merge(
-            array(
-                 'authorization_url'   => 'https://login.live.com/oauth20_authorize.srf',
-                 'access_token_url'    => 'https://login.live.com/oauth20_token.srf',
-                 'infos_url'           => 'https://apis.live.net/v5.0/me',
-            ),
-            $options
-        );
-
-        return new WindowsLiveResourceOwner($this->buzzClient, $httpUtils, $options, $name);
-    }
+    protected $expectedUrls = [
+        'authorization_url' => 'http://user.auth/?test=2&response_type=code&client_id=clientid&scope=wl.signin&redirect_uri=http%3A%2F%2Fredirect.to%2F',
+        'authorization_url_csrf' => 'http://user.auth/?test=2&response_type=code&client_id=clientid&scope=wl.signin&state=random&redirect_uri=http%3A%2F%2Fredirect.to%2F',
+    ];
 }

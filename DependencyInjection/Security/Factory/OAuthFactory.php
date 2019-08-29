@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,21 +11,53 @@
 
 namespace HWI\Bundle\OAuthBundle\DependencyInjection\Security\Factory;
 
-use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\AbstractFactory,
-    Symfony\Component\Config\Definition\Builder\NodeDefinition,
-    Symfony\Component\DependencyInjection\ContainerBuilder,
-    Symfony\Component\DependencyInjection\DefinitionDecorator,
-    Symfony\Component\DependencyInjection\Parameter,
-    Symfony\Component\DependencyInjection\Reference;
+use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\AbstractFactory;
+use Symfony\Component\Config\Definition\Builder\NodeDefinition;
+use Symfony\Component\DependencyInjection\ChildDefinition;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Parameter;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
- * OAuthFactory
+ * OAuthFactory.
  *
  * @author Geoffrey Bachelet <geoffrey.bachelet@gmail.com>
  * @author Alexander <iam.asm89@gmail.com>
  */
 class OAuthFactory extends AbstractFactory
 {
+    /**
+     * {@inheritdoc}
+     */
+    public function addConfiguration(NodeDefinition $node)
+    {
+        parent::addConfiguration($node);
+
+        $builder = $node->children();
+        $builder
+            ->scalarNode('login_path')->cannotBeEmpty()->isRequired()->end()
+        ;
+
+        $this->addOAuthProviderConfiguration($node);
+        $this->addResourceOwnersConfiguration($node);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getKey()
+    {
+        return 'oauth';
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getPosition()
+    {
+        return 'http';
+    }
+
     /**
      * Creates a resource owner map for the given configuration.
      *
@@ -35,15 +67,16 @@ class OAuthFactory extends AbstractFactory
      */
     protected function createResourceOwnerMap(ContainerBuilder $container, $id, array $config)
     {
-        $resourceOwnersMap = array();
+        $resourceOwnersMap = [];
         foreach ($config['resource_owners'] as $name => $checkPath) {
             $resourceOwnersMap[$name] = $checkPath;
         }
         $container->setParameter('hwi_oauth.resource_ownermap.configured.'.$id, $resourceOwnersMap);
 
         $container
-            ->setDefinition($this->getResourceOwnerMapReference($id), new DefinitionDecorator('hwi_oauth.abstract_resource_ownermap'))
-            ->replaceArgument(3, new Parameter('hwi_oauth.resource_ownermap.configured.'.$id))
+            ->setDefinition($this->getResourceOwnerMapReference($id), new ChildDefinition('hwi_oauth.abstract_resource_ownermap'))
+            ->replaceArgument(2, new Parameter('hwi_oauth.resource_ownermap.configured.'.$id))
+            ->setPublic(true)
         ;
     }
 
@@ -60,7 +93,7 @@ class OAuthFactory extends AbstractFactory
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
     protected function createAuthProvider(ContainerBuilder $container, $id, $config, $userProviderId)
     {
@@ -69,10 +102,11 @@ class OAuthFactory extends AbstractFactory
         $this->createResourceOwnerMap($container, $id, $config);
 
         $container
-            ->setDefinition($providerId, new DefinitionDecorator('hwi_oauth.authentication.provider.oauth'))
+            ->setDefinition($providerId, new ChildDefinition('hwi_oauth.authentication.provider.oauth'))
             ->addArgument($this->createOAuthAwareUserProvider($container, $id, $config['oauth_user_provider']))
             ->addArgument($this->getResourceOwnerMapReference($id))
             ->addArgument(new Reference('hwi_oauth.user_checker'))
+            ->addArgument(new Reference('security.token_storage'))
         ;
 
         return $providerId;
@@ -83,15 +117,15 @@ class OAuthFactory extends AbstractFactory
         $serviceId = 'hwi_oauth.user.provider.entity.'.$id;
 
         // todo: move this to factories?
-        switch(key($config)) {
+        switch (key($config)) {
             case 'oauth':
                 $container
-                    ->setDefinition($serviceId, new DefinitionDecorator('hwi_oauth.user.provider'))
+                    ->setDefinition($serviceId, new ChildDefinition('hwi_oauth.user.provider'))
                 ;
                 break;
             case 'orm':
                 $container
-                    ->setDefinition($serviceId, new DefinitionDecorator('hwi_oauth.user.provider.entity'))
+                    ->setDefinition($serviceId, new ChildDefinition('hwi_oauth.user.provider.entity'))
                     ->addArgument($config['orm']['class'])
                     ->addArgument($config['orm']['properties'])
                     ->addArgument($config['orm']['manager_name'])
@@ -103,77 +137,58 @@ class OAuthFactory extends AbstractFactory
                 break;
         }
 
-
         return new Reference($serviceId);
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
     protected function createEntryPoint($container, $id, $config, $defaultEntryPoint)
     {
         $entryPointId = 'hwi_oauth.authentication.entry_point.oauth.'.$id;
 
         $container
-            ->setDefinition($entryPointId, new DefinitionDecorator('hwi_oauth.authentication.entry_point.oauth'))
+            ->setDefinition($entryPointId, new ChildDefinition('hwi_oauth.authentication.entry_point.oauth'))
             ->addArgument($config['login_path'])
+            ->addArgument($config['use_forward'])
         ;
 
         return $entryPointId;
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
     protected function createListener($container, $id, $config, $userProvider)
     {
         $listenerId = parent::createListener($container, $id, $config, $userProvider);
 
-        $checkPaths = array();
+        $checkPaths = [];
         foreach ($config['resource_owners'] as $checkPath) {
             $checkPaths[] = $checkPath;
         }
 
         $container
             ->getDefinition($listenerId)
-            ->addMethodCall('setResourceOwnerMap', array($this->getResourceOwnerMapReference($id)))
-            ->addMethodCall('setCheckPaths', array($checkPaths))
+            ->addMethodCall('setResourceOwnerMap', [$this->getResourceOwnerMapReference($id)])
+            ->addMethodCall('setCheckPaths', [$checkPaths])
         ;
 
         return $listenerId;
     }
 
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    public function addConfiguration(NodeDefinition $node)
+    protected function getListenerId()
     {
-        parent::addConfiguration($node);
+        return 'hwi_oauth.authentication.listener.oauth';
+    }
 
+    private function addOAuthProviderConfiguration(NodeDefinition $node)
+    {
         $builder = $node->children();
-
         $builder
-            ->arrayNode('resource_owners')
-                ->isRequired()
-                ->useAttributeAsKey('name')
-                ->prototype('scalar')
-                ->end()
-                ->validate()
-                    ->ifTrue(function($c) {
-                        $checkPaths = array();
-                        foreach ($c as $checkPath) {
-                            if (in_array($checkPath, $checkPaths)) {
-                                return true;
-                            }
-
-                            $checkPaths[] = $checkPath;
-                        }
-
-                        return false;
-                    })
-                    ->thenInvalid("Each resource owner should have a unique check_path.")
-                ->end()
-            ->end()
             ->arrayNode('oauth_user_provider')
                 ->isRequired()
                 ->children()
@@ -184,7 +199,7 @@ class OAuthFactory extends AbstractFactory
                             ->arrayNode('properties')
                                 ->isRequired()
                                 ->useAttributeAsKey('name')
-                                ->prototype('scalar')
+                                    ->prototype('scalar')
                                 ->end()
                             ->end()
                         ->end()
@@ -196,47 +211,47 @@ class OAuthFactory extends AbstractFactory
                             ->arrayNode('properties')
                                 ->isRequired()
                                 ->useAttributeAsKey('name')
-                                ->prototype('scalar')
+                                    ->prototype('scalar')
                                 ->end()
                             ->end()
                         ->end()
                     ->end()
                 ->end()
                 ->validate()
-                    ->ifTrue(function($c) {
-                        return 1 !== count($c)
-                            || !in_array(key($c), array('fosub', 'oauth','orm', 'service'));
+                    ->ifTrue(function ($c) {
+                        return 1 !== \count($c) || !\in_array(key($c), ['fosub', 'oauth', 'orm', 'service'], true);
                     })
                     ->thenInvalid("You should configure (only) one of: 'fosub', 'oauth', 'orm', 'service'.")
                 ->end()
             ->end()
-            ->scalarNode('login_path')
-                ->cannotBeEmpty()
+        ;
+    }
+
+    private function addResourceOwnersConfiguration(NodeDefinition $node)
+    {
+        $builder = $node->children();
+        $builder
+            ->arrayNode('resource_owners')
                 ->isRequired()
-            ->end();
-    }
+                ->useAttributeAsKey('name')
+                    ->prototype('scalar')
+                ->end()
+                ->validate()
+                    ->ifTrue(function ($c) {
+                        $checkPaths = [];
+                        foreach ($c as $checkPath) {
+                            if (\in_array($checkPath, $checkPaths, true)) {
+                                return true;
+                            }
 
-    /**
-     * {@inheritDoc}
-     */
-    protected function getListenerId()
-    {
-      return 'hwi_oauth.authentication.listener.oauth';
-    }
+                            $checkPaths[] = $checkPath;
+                        }
 
-    /**
-     * {@inheritDoc}
-     */
-    public function getKey()
-    {
-        return 'oauth';
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public function getPosition()
-    {
-        return 'http';
+                        return false;
+                    })
+                    ->thenInvalid('Each resource owner should have a unique "check_path".')
+                ->end()
+            ->end()
+        ;
     }
 }

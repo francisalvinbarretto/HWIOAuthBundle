@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -12,44 +12,41 @@
 namespace HWI\Bundle\OAuthBundle\Tests\OAuth\ResourceOwner;
 
 use HWI\Bundle\OAuthBundle\OAuth\ResourceOwner\FoursquareResourceOwner;
+use HWI\Bundle\OAuthBundle\OAuth\Response\AbstractUserResponse;
 
 class FoursquareResourceOwnerTest extends GenericOAuth2ResourceOwnerTest
 {
+    protected $resourceOwnerClass = FoursquareResourceOwner::class;
     protected $userResponse = <<<json
 {
     "response": {
         "user": {
             "id": "1",
-            "firstName": "bar"
+            "firstName": "bar",
+            "lastName": "foo"
         }
     }
 }
 json;
 
-    protected $paths = array(
+    protected $paths = [
         'identifier' => 'response.user.id',
-        'nickname'   => 'response.user.firstName',
-        'realname'   => 'response.user.lastName',
-    );
+        'firstname' => 'response.user.firstName',
+        'lastname' => 'response.user.lastName',
+        'nickname' => 'response.user.firstName',
+        'realname' => ['response.user.firstName', 'response.user.lastName'],
+    ];
 
-    public function testGetOptionVersion()
+    public function testGetUserInformationFirstAndLastName()
     {
-        $this->assertEquals('FAKE_VERSION', $this->resourceOwner->getOption('version'));
-    }
+        $this->mockHttpClient($this->userResponse, 'application/json; charset=utf-8');
 
-    protected function setUpResourceOwner($name, $httpUtils, array $options)
-    {
-        $options = array_merge(
-            array(
-                 'authorization_url'   => 'https://foursquare.com/oauth2/authorize',
-                 'access_token_url'    => 'https://foursquare.com/oauth2/access_token',
-                 'infos_url'           => 'https://api.foursquare.com/v2/users/self',
+        /**
+         * @var AbstractUserResponse
+         */
+        $userResponse = $this->resourceOwner->getUserInformation(['access_token' => 'token']);
 
-                 'version'             => 'FAKE_VERSION',
-            ),
-            $options
-        );
-
-        return new FoursquareResourceOwner($this->buzzClient, $httpUtils, $options, $name);
+        $this->assertEquals('bar', $userResponse->getFirstName());
+        $this->assertEquals('foo', $userResponse->getLastName());
     }
 }

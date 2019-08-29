@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,20 +11,27 @@
 
 namespace HWI\Bundle\OAuthBundle\OAuth\Response;
 
-use Symfony\Component\Security\Core\Exception\AuthenticationException;
-
 /**
  * Class parsing the properties by given path options.
  *
  * @author Geoffrey Bachelet <geoffrey.bachelet@gmail.com>
  * @author Alexander <iam.asm89@gmail.com>
+ * @author Joseph Bielawski <stloyd@gmail.com>
  */
 class PathUserResponse extends AbstractUserResponse
 {
     /**
      * @var array
      */
-    protected $paths = array();
+    protected $paths = [
+        'identifier' => null,
+        'nickname' => null,
+        'firstname' => null,
+        'lastname' => null,
+        'realname' => null,
+        'email' => null,
+        'profilepicture' => null,
+    ];
 
     /**
      * {@inheritdoc}
@@ -45,9 +52,41 @@ class PathUserResponse extends AbstractUserResponse
     /**
      * {@inheritdoc}
      */
+    public function getFirstName()
+    {
+        return $this->getValueForPath('firstname');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getLastName()
+    {
+        return $this->getValueForPath('lastname');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
     public function getRealName()
     {
         return $this->getValueForPath('realname');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getEmail()
+    {
+        return $this->getValueForPath('email');
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getProfilePicture()
+    {
+        return $this->getValueForPath('profilepicture');
     }
 
     /**
@@ -67,56 +106,68 @@ class PathUserResponse extends AbstractUserResponse
      */
     public function setPaths(array $paths)
     {
-        $this->paths = $paths;
+        $this->paths = array_merge($this->paths, $paths);
     }
 
     /**
-     * @param $name
+     * @param string $name
      *
-     * @return mixed
-     *
-     * @throws AuthenticationException
+     * @return array|null
      */
-    protected function getPath($name)
+    public function getPath($name)
     {
-        if (!isset($this->paths[$name])) {
-            throw new AuthenticationException(sprintf('No path with name "%s" configured.', $name));
-        }
-
-        return $this->paths[$name];
+        return \array_key_exists($name, $this->paths) ? $this->paths[$name] : null;
     }
 
     /**
      * Extracts a value from the response for a given path.
      *
-     * @param string  $path           Name of the path to get the value for
-     * @param boolean $catchException Whether to throw an exception or return null
+     * @param string $path Name of the path to get the value for
      *
-     * @return null|string
-     *
-     * @throws AuthenticationException
+     * @return string|null
      */
-    protected function getValueForPath($path, $throwException = true)
+    protected function getValueForPath($path)
     {
-        try {
-            $steps = explode('.', $this->getPath($path));
-        } catch (AuthenticationException $e) {
-            if (!$throwException) {
+        $data = $this->data;
+        if (!$data) {
+            return null;
+        }
+
+        $steps = $this->getPath($path);
+        if (!$steps) {
+            return null;
+        }
+
+        if (\is_array($steps)) {
+            if (1 === \count($steps)) {
+                return $this->getValue(current($steps), $data);
+            }
+
+            $value = [];
+            foreach ($steps as $step) {
+                $value[] = $this->getValue($step, $data);
+            }
+
+            return trim(implode(' ', $value)) ?: null;
+        }
+
+        return $this->getValue($steps, $data);
+    }
+
+    /**
+     * @param string $steps
+     * @param array  $data
+     *
+     * @return string|null
+     */
+    private function getValue($steps, array $data)
+    {
+        $value = $data;
+        foreach (explode('.', $steps) as $step) {
+            if (!\array_key_exists($step, $value)) {
                 return null;
             }
 
-            throw $e;
-        }
-
-        $value = $this->response;
-        foreach ($steps as $step) {
-            if (!array_key_exists($step, $value)) {
-                if (!$throwException) {
-                    return null;
-                }
-
-                throw new AuthenticationException(sprintf('Could not follow path "%s" in OAuth provider response: %s', $this->paths[$path], var_export($this->response, true)));
-            }
             $value = $value[$step];
         }
 

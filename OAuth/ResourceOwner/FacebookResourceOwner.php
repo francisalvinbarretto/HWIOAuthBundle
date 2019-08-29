@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,39 +11,112 @@
 
 namespace HWI\Bundle\OAuthBundle\OAuth\ResourceOwner;
 
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+
 /**
- * FacebookResourceOwner
+ * FacebookResourceOwner.
  *
  * @author Geoffrey Bachelet <geoffrey.bachelet@gmail.com>
  */
 class FacebookResourceOwner extends GenericOAuth2ResourceOwner
 {
     /**
-     * {@inheritDoc}
+     * {@inheritdoc}
      */
-    protected $options = array(
-        'authorization_url'   => 'https://www.facebook.com/dialog/oauth',
-        'access_token_url'    => 'https://graph.facebook.com/oauth/access_token',
-        'infos_url'           => 'https://graph.facebook.com/me',
-        'scope'               => '',
-        'user_response_class' => '\HWI\Bundle\OAuthBundle\OAuth\Response\PathUserResponse',
-    );
-
-    /**
-     * {@inheritDoc}
-     */
-    protected $paths = array(
+    protected $paths = [
         'identifier' => 'id',
-        'nickname'   => 'username',
-        'realname'   => 'name',
-    );
+        'nickname' => 'name',
+        'firstname' => 'first_name',
+        'lastname' => 'last_name',
+        'realname' => 'name',
+        'email' => 'email',
+        'profilepicture' => 'picture.data.url',
+    ];
 
     /**
-     * Facebook unfortunately breaks the spec by using commas instead of spaces
-     * to separate scopes
+     * {@inheritdoc}
      */
-    public function configure()
+    public function getUserInformation(array $accessToken, array $extraParameters = [])
     {
-        $this->options['scope'] = str_replace(',', ' ', $this->options['scope']);
+        if ($this->options['appsecret_proof']) {
+            $extraParameters['appsecret_proof'] = hash_hmac('sha256', $accessToken['access_token'], $this->options['client_secret']);
+        }
+
+        return parent::getUserInformation($accessToken, $extraParameters);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getAuthorizationUrl($redirectUri, array $extraParameters = [])
+    {
+        $extraOptions = [];
+        if (isset($this->options['display'])) {
+            $extraOptions['display'] = $this->options['display'];
+        }
+
+        if (isset($this->options['auth_type'])) {
+            $extraOptions['auth_type'] = $this->options['auth_type'];
+        }
+
+        return parent::getAuthorizationUrl($redirectUri, array_merge($extraOptions, $extraParameters));
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getAccessToken(Request $request, $redirectUri, array $extraParameters = [])
+    {
+        $parameters = [];
+        if ($request->query->has('fb_source')) {
+            $parameters['fb_source'] = $request->query->get('fb_source');
+        }
+
+        if ($request->query->has('fb_appcenter')) {
+            $parameters['fb_appcenter'] = $request->query->get('fb_appcenter');
+        }
+
+        return parent::getAccessToken($request, $this->normalizeUrl($redirectUri, $parameters), $extraParameters);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function revokeToken($token)
+    {
+        $parameters = [
+            'client_id' => $this->options['client_id'],
+            'client_secret' => $this->options['client_secret'],
+        ];
+
+        $response = $this->httpRequest($this->normalizeUrl($this->options['revoke_token_url'], ['access_token' => $token]), $parameters, [], 'DELETE');
+
+        return 200 === $response->getStatusCode();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    protected function configureOptions(OptionsResolver $resolver)
+    {
+        parent::configureOptions($resolver);
+
+        $resolver->setDefaults([
+            'authorization_url' => 'https://www.facebook.com/v3.1/dialog/oauth',
+            'access_token_url' => 'https://graph.facebook.com/v3.1/oauth/access_token',
+            'revoke_token_url' => 'https://graph.facebook.com/v3.1/me/permissions',
+            'infos_url' => 'https://graph.facebook.com/v3.1/me?fields=id,first_name,last_name,name,email,picture.type(large)',
+            'use_commas_in_scope' => true,
+            'display' => null,
+            'auth_type' => null,
+            'appsecret_proof' => false,
+        ]);
+
+        $resolver
+            ->setAllowedValues('display', ['page', 'popup', 'touch', null]) // @link https://developers.facebook.com/docs/reference/dialogs/#display
+            ->setAllowedValues('auth_type', ['rerequest', null]) // @link https://developers.facebook.com/docs/reference/javascript/FB.login/
+            ->setAllowedTypes('appsecret_proof', 'bool') // @link https://developers.facebook.com/docs/graph-api/securing-requests
+        ;
     }
 }

@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -12,13 +12,15 @@
 namespace HWI\Bundle\OAuthBundle\Twig\Extension;
 
 use HWI\Bundle\OAuthBundle\Templating\Helper\OAuthHelper;
+use Twig\Extension\AbstractExtension;
+use Twig\TwigFunction;
 
 /**
- * OAuthExtension
+ * OAuthExtension.
  *
  * @author Joseph Bielawski <stloyd@gmail.com>
  */
-class OAuthExtension extends \Twig_Extension
+final class OAuthExtension extends AbstractExtension
 {
     /**
      * @var OAuthHelper
@@ -34,15 +36,15 @@ class OAuthExtension extends \Twig_Extension
     }
 
     /**
-     * @return array
+     * {@inheritdoc}
      */
     public function getFunctions()
     {
-        return array(
-            'hwi_oauth_authorization_url' => new \Twig_Function_Method($this, 'getAuthorizationUrl'),
-            'hwi_oauth_login_url'         => new \Twig_Function_Method($this, 'getLoginUrl'),
-            'hwi_oauth_resource_owners'   => new \Twig_Function_Method($this, 'getResourceOwners')
-        );
+        return [
+            new TwigFunction('hwi_oauth_authorization_url', [$this, 'getAuthorizationUrl']),
+            new TwigFunction('hwi_oauth_login_url', [$this, 'getLoginUrl']),
+            new TwigFunction('hwi_oauth_resource_owners', [$this, 'getResourceOwners']),
+        ];
     }
 
     /**
@@ -54,7 +56,7 @@ class OAuthExtension extends \Twig_Extension
     }
 
     /**
-     * @param string  $name
+     * @param string $name
      *
      * @return string
      */
@@ -70,7 +72,7 @@ class OAuthExtension extends \Twig_Extension
      *
      * @return string
      */
-    public function getAuthorizationUrl($name, $redirectUrl = null, array $extraParameters = array())
+    public function getAuthorizationUrl($name, $redirectUrl = null, array $extraParameters = [])
     {
         return $this->helper->getAuthorizationUrl($name, $redirectUrl, $extraParameters);
     }

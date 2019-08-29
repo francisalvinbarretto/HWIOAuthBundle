@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -14,12 +14,10 @@ namespace HWI\Bundle\OAuthBundle\OAuth\Response;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 
 /**
- * SensioUserResponse
- *
  * @author Joseph Bielawski <stloyd@gmail.com>
  * @author SensioLabs <contact@sensiolabs.com>
  */
-class SensioConnectUserResponse extends AbstractUserResponse implements AdvancedUserResponseInterface
+class SensioConnectUserResponse extends AbstractUserResponse
 {
     /**
      * @var \DOMXpath
@@ -27,11 +25,16 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
     protected $xpath;
 
     /**
+     * @var \DOMElement
+     */
+    protected $data;
+
+    /**
      * {@inheritdoc}
      */
     public function getUsername()
     {
-        return $this->response->attributes->getNamedItem('id')->value;
+        return $this->data->attributes->getNamedItem('id')->value;
     }
 
     /**
@@ -40,16 +43,33 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
     public function getNickname()
     {
         $username = null;
-        $accounts = $this->xpath->query('./foaf:account/foaf:OnlineAccount', $this->response);
-        for ($i = 0; $i < $accounts->length; $i++) {
+        $accounts = $this->xpath->query('./foaf:account/foaf:OnlineAccount', $this->data);
+        for ($i = 0; $i < $accounts->length; ++$i) {
             $account = $accounts->item($i);
-            if ('SensioLabs Connect' == $this->getNodeValue('./foaf:name', $account)) {
+            if ('SensioLabs Connect' === $this->getNodeValue('./foaf:name', $account)) {
                 $username = $this->getNodeValue('foaf:accountName', $account);
+
                 break;
             }
         }
 
-        return $username ?: $this->getNodeValue('./foaf:name', $this->response);
+        return $username ?: $this->getNodeValue('./foaf:name', $this->data);
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getFirstName()
+    {
+        return null;
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function getLastName()
+    {
+        return null;
     }
 
     /**
@@ -57,7 +77,7 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
      */
     public function getRealName()
     {
-        return $this->getNodeValue('./foaf:name', $this->response);
+        return $this->getNodeValue('./foaf:name', $this->data);
     }
 
     /**
@@ -65,7 +85,7 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
      */
     public function getEmail()
     {
-        return $this->getNodeValue('./foaf:mbox', $this->response);
+        return $this->getNodeValue('./foaf:mbox', $this->data);
     }
 
     /**
@@ -73,31 +93,32 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
      */
     public function getProfilePicture()
     {
-        return $this->getNodeValue('./atom:link[@rel="foaf:depiction"]', $this->response, 'link');
+        return $this->getNodeValue('./atom:link[@rel="foaf:depiction"]', $this->data, 'link');
     }
 
     /**
      * {@inheritdoc}
      */
-    public function setResponse($response)
+    public function setData($data)
     {
         $dom = new \DOMDocument();
         try {
-            if (!$dom->loadXML($response)) {
+            if (!$dom->loadXML($data)) {
                 throw new \ErrorException('Could not transform this xml to a \DOMDocument instance.');
-            };
-        } catch(\Exception $e) {
+            }
+        } catch (\Exception $e) {
             throw new AuthenticationException('Could not retrieve valid user info.');
         }
+
         $this->xpath = new \DOMXpath($dom);
 
         $nodes = $this->xpath->evaluate('/api/root');
-        $user  = $this->xpath->query('./foaf:Person', $nodes->item(0));
+        $user = $this->xpath->query('./foaf:Person', $nodes->item(0));
         if (1 !== $user->length) {
             throw new AuthenticationException('Could not retrieve user info.');
         }
 
-        $this->response = $user->item(0);
+        $this->data = $user->item(0);
     }
 
     /**
@@ -137,11 +158,15 @@ class SensioConnectUserResponse extends AbstractUserResponse implements Advanced
     protected function sanitizeValue($value)
     {
         if ('true' === $value) {
-            $value = true;
-        } elseif ('false' === $value) {
-            $value = false;
-        } elseif (empty($value)) {
-            $value = null;
+            return true;
+        }
+
+        if ('false' === $value) {
+            return false;
+        }
+
+        if (empty($value)) {
+            return null;
         }
 
         return $value;

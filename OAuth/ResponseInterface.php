@@ -3,7 +3,7 @@
 /*
  * This file is part of the HWIOAuthBundle package.
  *
- * (c) Hardware.Info <opensource@hardware.info>
+ * (c) Hardware Info <opensource@hardware.info>
  *
  * For the full copyright and license information, please view the LICENSE
  * file that was distributed with this source code.
@@ -11,28 +11,28 @@
 
 namespace HWI\Bundle\OAuthBundle\OAuth;
 
-use HWI\Bundle\OAuthBundle\OAuth\ResourceOwnerInterface;
+use Symfony\Component\Security\Core\Exception\AuthenticationException;
 
 /**
- * ResponseInterface
- *
  * @author Alexander <iam.asm89@gmail.com>
  */
 interface ResponseInterface
 {
     /**
-     * Get the api response.
+     * Get the api response data.
      *
-     * @return mixed
+     * @return array
      */
-    public function getResponse();
+    public function getData();
 
     /**
      * Set the raw api response.
      *
-     * @param string $response
+     * @param string|array $data
+     *
+     * @throws AuthenticationException
      */
-    public function setResponse($response);
+    public function setData($data);
 
     /**
      * Get the resource owner responsible for the response.
